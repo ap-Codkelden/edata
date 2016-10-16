@@ -1,0 +1,6 @@
+bin/*
+include/*
+lib/*
+*.json
+*.sqlite
+*.csv
