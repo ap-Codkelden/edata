@@ -193,7 +193,7 @@ def fetch(qry_dict, output_format=None, ascii=False, indent=False):
         raise
     else:
         if output_format == '0x2':    # json
-            with open('edata1.json', 'w', encoding='utf-8') as f:
+            with open('edata.json', 'w', encoding='utf-8') as f:
                 json.dump(edata_json, f, ensure_ascii=ascii, indent=indent)
         elif output_format == '0x4':  # csv
             write_csv(edata_json['response']['transactions'])
