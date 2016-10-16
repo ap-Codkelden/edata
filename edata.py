@@ -33,7 +33,7 @@ class Error(Exception):
 class NoOutputFormatSpecifiedError(Error):
     def __init__(self):
         sys.stderr.write(
-            'Не вказано ані відправників (параметр -r/--payers),'
+            'Не вказано ані відправників (параметр -p/--payers),'
             ' ані отримувачів (параметр -r/--receipts). Повинен бути вказаний'
             ' хоч один з них.\n'
             )
