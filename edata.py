@@ -197,7 +197,7 @@ def fetch(qry_dict, output_format=None, ascii=False, indent=False):
                 json.dump(edata_json, f, ensure_ascii=ascii, indent=indent)
         elif output_format == '0x4':  # csv
             write_csv(edata_json['response']['transactions'])
-        elif output_format == '0x8':  # csv
+        elif output_format == '0x8':  # sqlite
             make_sqlite(edata_json['response']['transactions'])
 
 
