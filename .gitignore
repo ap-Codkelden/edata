@@ -4,3 +4,6 @@ lib/*
 *.json
 *.sqlite
 *.csv
+*.xls
+*.xlsx
+*.txt
