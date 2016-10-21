@@ -107,6 +107,41 @@ arg_parser.add_argument('-a', '--ascii', action='store_true', help='вивест
 arg_parser.add_argument('-i', '--indent', dest='indent', type=int,
                         help='кількість пробілів для відступу у JSON-файлі',
                         default=0)
+arg_parser.add_argument('-iso', '--iso8601', action='store_false',
+                        help='залишити дату транзакції у форматі ISO 8601')
+
+
+def iso8601_to_date(s):
+    dt_regex = re.compile(
+        "(\d{4}\-\d{2}\-\d{2}T\d{2}\:\d{2}\:\d{2})((?:\+|\-)\d{2}\:\d{2})"
+        )
+    m = dt_regex.match(s)
+    if m:
+        datetime_part, timezone_part = m.groups()
+    else:
+        return s
+
+    p = "{}{}".format(datetime_part, re.sub('\:', '', timezone_part))
+    d = datetime.strptime(p, '%Y-%m-%dT%H:%M:%S%z')
+
+    return d.strftime('%d.%m.%Y')
+
+
+def _date_generator(edata_transactions):
+    transactions = [t for t in edata_transactions]
+    for t in transactions:
+        yield t
+
+
+def iso8601_replace(edata):
+    transactions = _date_generator(edata['response']['transactions'])
+    new_transactions = []
+    edata['response']['transactions'] = None
+    for t in transactions:
+        t['trans_date'] = iso8601_to_date(t['trans_date'])
+        new_transactions.append(t)
+    edata['response']['transactions'] = new_transactions
+    return edata
 
 
 def write_csv(edata):
@@ -159,7 +194,8 @@ def make_sqlite(edata):
     db.commit()
 
 
-def fetch(qry_dict, output_format=None, ascii=False, indent=False):
+def fetch(qry_dict, output_format=None, ascii=False, indent=False,
+          iso8601=False):
     EDATA_URL = "http://api.e-data.gov.ua:8080/api/rest/1.0/transactions"
     HEADERS = {
         "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:47.0) "
@@ -192,6 +228,8 @@ def fetch(qry_dict, output_format=None, ascii=False, indent=False):
     except:
         raise
     else:
+        if iso8601:
+            edata_json = iso8601_replace(edata_json)
         if output_format == '0x2':    # json
             with open('edata.json', 'w', encoding='utf-8') as f:
                 json.dump(edata_json, f, ensure_ascii=ascii, indent=indent)
@@ -285,7 +323,7 @@ def main():
     if not (results.payers or results.receipts):
         raise NoOutputFormatSpecifiedError
         sys.exit(2)
-    startdate, enddate = get_date_value(results.startdate) \
+    startdate, enddate = get_date_value(results.startdate), \
         get_date_value(results.enddate)
 
     if startdate and enddate:
@@ -306,10 +344,12 @@ def main():
 
     qry = compose_data_dict(startdate=startdate,
                             recipt_edrpous=results.receipts,
-                            payers_edrpous=results.payers, enddate=enddate,
-                            regions=treasury)
+                            payers_edrpous=results.payers,
+                            enddate=enddate,
+                            regions=treasury,
+                            )
     fetch(qry, output_format=format_, ascii=results.ascii,
-          indent=results.indent)
+          indent=results.indent, iso8601=results.iso8601)
 
 
 if __name__ == '__main__':
