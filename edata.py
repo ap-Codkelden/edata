@@ -58,8 +58,8 @@ class ValueIsNotADateError(Error):
 class DateOrderViolation(Error):
     def __init__(self):
         sys.stderr.write(
-            'Початкова дата більша за кінцеву, дати буде '
-            'поміняно місцями.\n'
+            'Початкова дата більша за кінцеву, дати буде поміняно '
+            'місцями.\n'
             )
 
 
@@ -261,6 +261,10 @@ def compose_data_dict(
     return d
 
 
+def get_date_value(date_):
+    return checkdate(date_) if date_ else None
+
+
 def main():
     results = arg_parser.parse_args()
     # format constants:
@@ -281,8 +285,9 @@ def main():
     if not (results.payers or results.receipts):
         raise NoOutputFormatSpecifiedError
         sys.exit(2)
-    startdate = checkdate(results.startdate) if results.startdate else None
-    enddate = checkdate(results.enddate) if results.enddate else None
+    startdate, enddate = get_date_value(results.startdate) \
+        get_date_value(results.enddate)
+
     if startdate and enddate:
         try:
             check_date_order(startdate, enddate)
