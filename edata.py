@@ -121,8 +121,10 @@ def iso8601_to_date(s):
     else:
         return s
 
-    p = "{}{}".format(datetime_part, re.sub('\:', '', timezone_part))
-    d = datetime.strptime(p, '%Y-%m-%dT%H:%M:%S%z')
+    d = datetime.strptime(
+        "{}{}".format(datetime_part, re.sub('\:', '', timezone_part)),
+        '%Y-%m-%dT%H:%M:%S%z'
+        )
 
     return d.strftime('%d.%m.%Y')
 
