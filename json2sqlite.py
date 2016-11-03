@@ -65,9 +65,6 @@ arg_parser.add_argument('-d', '--database', dest='database',
                         help="ім'я файла бази даних (БЕЗ розширення), "
                         "за замовчуванням -- `edata`"
                         )
-arg_parser.add_argument('-l', '--log', dest='database',  action='store_true',
-                        help="вести лог"
-                        )
 
 
 class EDataSQLDatabase(object):
