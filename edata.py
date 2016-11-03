@@ -108,7 +108,8 @@ arg_parser.add_argument('-i', '--indent', dest='indent', type=int,
                         help='кількість пробілів для відступу у JSON-файлі',
                         default=0)
 arg_parser.add_argument('-iso', '--iso8601', action='store_false',
-                        help='залишити дату транзакції у форматі ISO 8601')
+                        help='залишити дату транзакції у форматі '
+                        'datetime ISO 8601')
 
 
 def iso8601_to_date(s):
@@ -126,7 +127,7 @@ def iso8601_to_date(s):
         '%Y-%m-%dT%H:%M:%S%z'
         )
 
-    return d.strftime('%d.%m.%Y')
+    return d.strftime('%Y-%m-%d')
 
 
 def _date_generator(edata_transactions):
