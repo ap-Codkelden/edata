@@ -50,17 +50,10 @@ class ErrorsInJSONFileError(Error):
         sys.stderr.write('У файлі `{}` присутні помилки\n'.format(filename))
 
 
-class HelpDefaultArgumentParser(argparse.ArgumentParser):
-    def error(self, message):
-        sys.stderr.write('ПОМИЛКА: {}\n\n'.format(message))
-        self.print_help()
-        sys.exit(2)
-
-
-arg_parser = HelpDefaultArgumentParser(
+arg_parser = argparse.ArgumentParser(
     prog=None,
     usage=None,
-    description="Завантажує дані із JSON-файлів, вивантажених з порталу "
+    description="Імпортує дані із JSON-файлів, вивантажених з порталу "
                 "Є-Data, у базу даних SQLite",
     epilog=None
     )
@@ -176,7 +169,6 @@ class EDataSQLDatabase(object):
             raise ErrorsInJSONFileError(f)
 
     def import_file(self, json_file):
-        print(json_file)
         try:
             with open(json_file) as f:
                 json_data = json.load(f)
@@ -211,7 +203,6 @@ def check_file(json_file):
 
 def main():
     results = arg_parser.parse_args()
-    print(results)
     try:
         json_filenames = results.file if results.file else \
         [f.path for f in scandir() if f.is_file() and
