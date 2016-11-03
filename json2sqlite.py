@@ -200,6 +200,8 @@ def check_file(json_file):
 
 def main():
     results = arg_parser.parse_args()
+    if re.match('^.+\.sqlite$', results.database):
+        results.database = re.sub('^(.+)\.sqlite$', '\\1', results.database)
     try:
         json_filenames = results.file if results.file else \
         [f.path for f in scandir() if f.is_file() and
