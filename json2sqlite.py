@@ -6,16 +6,12 @@
 # https://opensource.org/licenses/MIT The MIT License (MIT)
 # or see LICENSE file
 
-# This software needs Requests -- Non-GMO HTTP library for Python
-# Requests -- Python HTTP for Humans
-# <https://pypi.python.org/pypi/requests/>
 
 import argparse
 import errno
 import json
 import os
 import re
-import requests
 import sqlite3
 import sys
 from datetime import datetime
