@@ -331,7 +331,8 @@ def main():
 
     if startdate and enddate:
         try:
-            check_date_order(startdate, enddate)
+            if startdate != enddate:
+                check_date_order(startdate, enddate)
         except DateOrderViolation:
             startdate, enddate = enddate, startdate
     if results.treasury:
