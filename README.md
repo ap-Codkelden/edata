@@ -11,28 +11,21 @@
 * JSON
 * XML
 
-Оскільки скрипт написано на Python, він працюватиме під усіма 
-[операційними системами](https://www.python.org/downloads/operating-systems/), 
-для яких реалізовано інтерпретатор.
+Оскільки скрипт написано на Python, він працюватиме під усіма [операційними системами](https://www.python.org/downloads/operating-systems/), для яких реалізовано інтерпретатор, з деякими обмеженнями (див. [Вимоги](#Вимоги)).
 
 Щодо особливостей запуску під окремими операційними системами зверніться до 
 відповідної документації мови Python для цих систем:
 
-* [Windows](https://docs.python.org/3.3/using/windows.html)
-* [Mas OS X](https://docs.python.org/3.3/using/mac.html)
+* [Windows](https://docs.python.org/3.5/using/windows.html)
+* [Mas OS X](https://docs.python.org/3.5/using/mac.html)
 
 ### Вимоги ###
-Для роботи скрипту потрібен Python версії не нижче 3.4 (теоретично повинен 
-працювати на усіх версіях третьої гілки, але це не перевірялося). 
-
-Скрипт використовує бібліотеку Requests 
-([сторінка](https://github.com/kennethreitz/requests) на GitHub, 
-[сторінка](https://pypi.python.org/pypi/requests) у каталозі PyPi, 
-[документація](http://docs.python-requests.org/en/master/)).
+Скрипт використовує бібліотеку Requests ([сторінка](https://github.com/kennethreitz/requests) на GitHub, [сторінка](https://pypi.python.org/pypi/requests) у каталозі PyPi, [документація](http://docs.python-requests.org/en/master/)).
 
 Більш досвідченим користувачам можливо буде зручніше використовувати 
 [віртуальне оточення](http://docs.python-guide.org/en/latest/dev/virtualenvs/).
-
+#### До уваги користувачів Windows
+Для роботи скриптів `edata.py` та `json2sqlite.py` без додаткових налаштувань потрібен Python версії не нижче 3.5. У  випадку використання Windows, [останньою версією](https://docs.python.org/3.5/using/windows.html#supported-versions), під якою працюватиме Python 3.5, є Windows 7 SP1.
 ### Отримання та встановлення ###
 
 Отримати скрипт можна кількома шляхами:
@@ -41,8 +34,8 @@
 * завантажити [ZIP-архів](https://github.com/ap-Codkelden/edata/archive/master.zip) репозиторія 
 * [клонувати](https://git-scm.com/book/it/v2/Git-Basics-Getting-a-Git-Repository#Cloning-an-Existing-Repository) даний репозиторій
 
-Встановлення скрипт не потребує, головне — запам'ятати директорію, у яку буде 
-збережено файл `edata.py`.
+Встановлення скрипти не потребують, головне — запам'ятати директорію, у яку буде 
+збережено файли `edata.py` та `json2sqlite.py`.
 
 ### Запуск ###
 
@@ -199,7 +192,7 @@ $ python json2sqlite.py -d mysqlite -f file1.json file2.json
 `mysqlite.sqlite`.
 ### TODO ###
 #### edata.py ####
-- [x] конвертувати дату у ISO 8601 у звичайну
+- [x] конвертувати ISO 8601 datetime у ISO 8601 date
 - [ ] з'ясувати механізм роботи та додати обробку параметра `lastload`, який повертає дату повного завантаження транзакцій (які іноді додаються частинами протягом дня)
 - [ ] реалізувати можливість зберігання файлів JSON та CSV під довільними іменами
 - [ ] реалізувати можливість стиснення файлів у `bzip`, `gzip` або інший архівний формат
@@ -207,3 +200,4 @@ $ python json2sqlite.py -d mysqlite -f file1.json file2.json
 ### Помилки ###
 
 У разі виявлення помилок або бажання нових фіч вітається [відкриття](https://github.com/ap-Codkelden/edata/issues/new) issues.
+
