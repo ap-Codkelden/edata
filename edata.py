@@ -18,6 +18,7 @@ import argparse
 import sys
 import re
 from datetime import datetime
+from requests.exceptions import ConnectionError
 
 
 DATE_DASH = re.compile('(\d{2})\-(\d{2})\-(\d{4})')
@@ -223,6 +224,9 @@ def fetch(qry_dict, output_format=None, ascii=False, indent=False,
                     raise EDataSystemError(
                         edata_json['response']['errors'][0]['error']
                         )
+    except ConnectionError as e:
+        print("Помилка з'єднання: `{}`".format(e.args[0].args[0]))
+        sys.exit(1)
     except NoDataReturnError:
         sys.exit(0)
     except EDataSystemError as e:
