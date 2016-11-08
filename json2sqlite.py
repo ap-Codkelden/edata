@@ -167,7 +167,7 @@ class EDataSQLDatabase(object):
 
     def import_file(self, json_file):
         try:
-            with open(json_file) as f:
+            with open(json_file, encoding='utf-8') as f:
                 json_data = json.load(f)
             self._check_structure(json_file, json_data)
         except json.decoder.JSONDecodeError as e:
