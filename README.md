@@ -25,7 +25,7 @@
 Більш досвідченим користувачам можливо буде зручніше використовувати 
 [віртуальне оточення](http://docs.python-guide.org/en/latest/dev/virtualenvs/).
 #### До уваги користувачів Windows
-Для роботи скриптів `edata.py` та `json2sqlite.py` без додаткових налаштувань потрібен Python версії не нижче 3.5. У  випадку використання Windows, [останньою версією](https://docs.python.org/3.5/using/windows.html#supported-versions), під якою працюватиме Python 3.5, є Windows 7 SP1.
+Для роботи скриптів `edata.py` та `json2sqlite.py` без додаткових налаштувань потрібен Python версії не нижче 3.5. У  випадку використання Windows, найстарішою версією, під якою працюватиме Python 3.5, є [Windows 7 SP1](https://docs.python.org/3.5/using/windows.html#supported-versions).
 ### Отримання та встановлення ###
 
 Отримати скрипт можна кількома шляхами:
