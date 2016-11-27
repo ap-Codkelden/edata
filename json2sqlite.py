@@ -16,6 +16,7 @@ import sqlite3
 import sys
 from datetime import datetime
 from os import scandir
+from edata import chunks, show_db_stats, SQLITE_MAX_VARIABLE_NUMBER
 
 
 class Error(Exception):
@@ -65,14 +66,19 @@ arg_parser.add_argument('-d', '--database', dest='database',
                         help="ім'я файла бази даних (БЕЗ розширення), "
                         "за замовчуванням -- `edata`"
                         )
+arg_parser.add_argument('-v', '--verbose', dest='verbose',
+                        help="виводити додаткову інформацію",
+                        action='store_true',
+                        )
 
 
 class EDataSQLDatabase(object):
-    def __init__(self, database=None):
+    def __init__(self, database=None, verbose=None):
         self._database_name = database+'.sqlite' if database \
             else 'edata.sqlite'
         self._database = sqlite3.connect(self._database_name)
         self.date8601 = True
+        self.verbose = verbose
         self.values = {'amount': None, 'payer_bank': None, 'region_id': None,
                        'trans_date': None, 'recipt_name': None, 'id': None,
                        'payment_details': None, 'recipt_mfo': None,
@@ -85,14 +91,17 @@ class EDataSQLDatabase(object):
             "(\d{4}\-\d{2}\-\d{2}T\d{2}\:\d{2}\:\d{2})((?:\+|\-)\d{2}\:\d{2})"
             )
         if not self._check_table():
+            if self.verbose:
+                sys.stdout.write('Створюємо таблицю...\n')
             self._create_table()
 
     def _check_table(self):
         c = self._database.cursor()
         chk_qry = """SELECT name FROM sqlite_master WHERE type='table'
-            AND name='{}';""".format(self._database_name)
+        AND name = 'edata';""".format(self._database_name)
         c.execute(chk_qry)
         return c.fetchone()
+
 
     def _create_table(self):
         try:
@@ -104,8 +113,6 @@ class EDataSQLDatabase(object):
                 payer_edrpou text, recipt_bank text NULL, recipt_edrpou text,
                 payer_mfo integer NULL,
                 payer_name text NULL);"""
-            columns = ', '.join(self.values.keys())
-            placeholders = ':'+', :'.join(self.values.keys())
             c.execute(qry)
             return 0
         except:
@@ -137,23 +144,48 @@ class EDataSQLDatabase(object):
 
     def _insert_json(self, edata):
         c = self._database.cursor()
+        if self.verbose:
+            # загальна кількість записів, що є сумою кількостей
+            # повернутих запитами нижче (кожен запить містить
+            # максимум 999 елементів, щоб задовольняти обмеженню
+            # SQLITE_MAX_VARIABLE_NUMBER
+            present_records = processed_records = 0
+            id2insert_lists = chunks([
+                x['id'] for x in edata],
+                SQLITE_MAX_VARIABLE_NUMBER)
+            already_exist_qry = 'SELECT COUNT(*) FROM edata WHERE id IN (%s)'
+            for l in id2insert_lists:
+                placeholders = ', '.join(['?'] * len(l))
+                query = already_exist_qry % placeholders
+                c.execute(query, l)
+                chunk_count = c.fetchone()[0]
+                present_records += chunk_count
         # convert dates
         self._iso8601_replace(edata)
+
         qry = """INSERT INTO edata (amount, payer_bank, region_id, trans_date,
             recipt_name, id, payment_details, recipt_mfo, payer_edrpou,
             recipt_bank, recipt_edrpou, payer_mfo, payer_name) VALUES (:amount,
             :payer_bank, :region_id, :trans_date, :recipt_name, :id,
             :payment_details, :recipt_mfo, :payer_edrpou, :recipt_bank,
             :recipt_edrpou, :payer_mfo, :payer_name);"""
-        try:
-            c.executemany(
-                qry,
-                ({k: d.get(k, self.values[k]) for k in self.values}
-                    for d in edata)
-                )
-        except:
-            raise
-        self._database.commit()
+        # запит ділиться на частини по 999, щоб задовольняти обмеженню
+        # SQLITE_MAX_VARIABLE_NUMBER
+        processed_records = 0
+        for edata_chunk in chunks(edata, SQLITE_MAX_VARIABLE_NUMBER):
+            try:
+                c.executemany(
+                    qry,
+                    ({k: d.get(k, self.values[k]) for k in self.values}
+                        for d in edata_chunk)
+                    )
+                processed_records += c.rowcount
+            except:
+                raise
+            else:
+                self._database.commit()
+        if self.verbose:
+            show_db_stats(processed_records, present_records)
 
     def _check_structure(self, f, j):
         if 'response' not in j:
@@ -204,14 +236,15 @@ def main():
         results.database = re.sub('^(.+)\.sqlite$', '\\1', results.database)
     try:
         json_filenames = results.file if results.file else \
-        [f.path for f in scandir() if f.is_file() and
-         os.path.splitext(f.path)[1].lower() == '.json']
+            [f.path for f in scandir() if f.is_file() and
+             os.path.splitext(f.path)[1].lower() == '.json']
         if not json_filenames:
             raise NoFilesProvidedError
     except NoFilesProvidedError:
         sys.exit(2)
     else:
-        edb = EDataSQLDatabase(database=results.database)
+        edb = EDataSQLDatabase(database=results.database,
+                               verbose=results.verbose)
         for f in [f for f in json_filenames if check_file(f)]:
             edb.import_file(f)
 
