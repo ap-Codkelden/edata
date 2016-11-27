@@ -21,6 +21,7 @@ from datetime import datetime
 from requests.exceptions import ConnectionError
 
 
+SQLITE_MAX_VARIABLE_NUMBER = 999
 DATE_DASH = re.compile('(\d{2})\-(\d{2})\-(\d{4})')
 DATE_DOTS = re.compile('(\d{2})\.(\d{2})\.(\d{4})')
 TREASURY = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
@@ -138,6 +139,22 @@ arg_parser.add_argument('-v', '--verbose', action='store_true',
                         help='виводити додаткову інформацію')
 
 
+def show_db_stats(processed_records, present_records):
+    verbose_msg = "Кількість оброблених записів: {:>10}\n" \
+        .format(processed_records)
+    sys.stdout.write(verbose_msg)
+    sys.stdout.write("Кількість доданих записів:" +
+                     ' ' * 4 + "{:>10}\n"
+                     .format(processed_records - present_records))
+    return
+
+
+def chunks(list_, n):
+    """Yield successive n-sized chunks from list_."""
+    for i in range(0, len(list_), n):
+        yield list_[i:i + n]
+
+
 def iso8601_to_date(s, lastload=False):
     dt_regex = re.compile(
         "(\d{4}\-\d{2}\-\d{2}T\d{2}\:\d{2}\:\d{2})((?:\+|\-)\d{2}\:\d{2})"
@@ -206,8 +223,6 @@ def make_sqlite(edata, verbose=False):
               'payment_details': None, 'recipt_mfo': None,
               'payer_edrpou': None, 'recipt_bank': None,
               'recipt_edrpou': None, 'payer_mfo': None, 'payer_name': None}
-    columns = ', '.join(values.keys())
-    placeholders = ':'+', :'.join(values.keys())
     c.execute(qry)
 
     qry = """INSERT INTO edata (amount, payer_bank, region_id, trans_date,
@@ -218,21 +233,21 @@ def make_sqlite(edata, verbose=False):
         :recipt_edrpou, :payer_mfo, :payer_name);"""
     try:
         if verbose:
-            id2insert = [x['id'] for x in edata]
-            placeholders = ', '.join(['?']*len(id2insert))
-            query = 'SELECT COUNT(*) FROM edata WHERE id IN (%s)' \
-                % placeholders
-            c.execute(query, id2insert)
-            already_present = c.fetchone()[0]
+            present_records = 0
+            for chunk in chunks(edata, SQLITE_MAX_VARIABLE_NUMBER):
+                id2insert = [x['id'] for x in chunk]
+                placeholders = ', '.join(['?']*len(id2insert))
+                query = 'SELECT COUNT(*) FROM edata WHERE id IN (%s)' \
+                    % placeholders
+                c.execute(query, id2insert)
+                chunk_count = c.fetchone()[0]
+                present_records += chunk_count
 
         c.executemany(qry, ({k: d.get(k, values[k]) for k in values}
                       for d in edata))
         if verbose:
             processed_records = c.rowcount
-            print("Кількість оброблених записів: {:>10}"
-                  .format(processed_records))
-            print("Кількість доданих записів:    {:>10}"
-                  .format(processed_records - already_present))
+            show_db_stats(processed_records, present_records)
     except:
         raise
     db.commit()
