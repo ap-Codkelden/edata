@@ -425,7 +425,11 @@ def main():
 
     if (not results.json) and results.indent:
         results.indent = False
-        print('Параметр `--indent` проігноровано.\n')
+        sys.stdout.write('Параметр `--indent` проігноровано.\n')
+
+    if (not results.sqlite) and results.keep_json:
+        sys.stdout.write('Параметр `--keep-json` проігноровано, оскільки '
+                         'збереження проводиться не в базу даних SQLite.\n')
 
     try:
         if not (results.payers or results.receipts):
