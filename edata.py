@@ -24,7 +24,15 @@ from requests.exceptions import ConnectionError
 DATE_DASH = re.compile('(\d{2})\-(\d{2})\-(\d{4})')
 DATE_DOTS = re.compile('(\d{2})\.(\d{2})\.(\d{4})')
 TREASURY = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
-            19, 20, 21, 22, 23, 24, 25, 26, 27, 99, -1]
+            19, 20, 21, 22, 23, 24, 25, 26, 27, 99]
+EDATA_API_URL = "http://api.e-data.gov.ua:8080/api/rest/1.0"
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:47.0) "
+    "Gecko/20100101 Firefox/47.0",
+    "Accept": "application/json,text/html,application/xhtml+xml,"
+    "application/xml;q=0.9,*/*;q=0.8",
+    'Content-Type': 'application/json',
+    }
 
 
 class Error(Exception):
@@ -37,6 +45,22 @@ class NoOutputFormatSpecifiedError(Error):
             'Не вказано ані відправників (параметр -p/--payers),'
             ' ані отримувачів (параметр -r/--receipts). Повинен бути вказаний'
             ' хоч один з них.\n'
+            )
+
+
+class OnlyOneOutputFormatIsAllowedError(Error):
+    def __init__(self):
+        sys.stderr.write(
+            'Забагато вихідних форматів, має бути вказано лише один '
+            'формат для зберігання.\n'
+            )
+
+
+class OnlyLastLoadParameterIsAllowedError(Error):
+    def __init__(self):
+        sys.stderr.write(
+            'Параметр `lastload` не призначений для використання разом з '
+            'іншими параметрами.\n'
             )
 
 
@@ -69,14 +93,7 @@ class WrongTreasuryInList(Error):
         sys.stderr.write('Казначейства з даним кодом не існує.\n')
 
 
-class HelpDefaultArgumentParser(argparse.ArgumentParser):
-    def error(self, message):
-        sys.stderr.write('ПОМИЛКА: {}\n\n'.format(message))
-        self.print_help()
-        sys.exit(2)
-
-
-arg_parser = HelpDefaultArgumentParser(
+arg_parser = argparse.ArgumentParser(
     prog=None,
     usage=None,
     description="Отримує дані з порталу державних коштів Є-Data та зберігає "
@@ -84,13 +101,13 @@ arg_parser = HelpDefaultArgumentParser(
     epilog=None
     )
 
-format_group = arg_parser.add_mutually_exclusive_group(required=True)
-format_group.add_argument("-j", "--json", action='store_true',
-                          help="Зберегти у файл JSON")
-format_group.add_argument('-c', '--csv', action='store_true', help='зберегти '
-                          'у файл CSV')
-format_group.add_argument('-sql', '--sqlite', action='store_true',
-                          help='записати у базу даних SQLite')
+
+arg_parser.add_argument("-j", "--json", action='store_true',
+                        help="Зберегти у файл JSON")
+arg_parser.add_argument('-c', '--csv', action='store_true', help='зберегти '
+                        'у файл CSV')
+arg_parser.add_argument('-sql', '--sqlite', action='store_true',
+                        help='записати у базу даних SQLite')
 arg_parser.add_argument('-p', '--payers', dest='payers', default=[],
                         help='відправники платежу', type=str,  nargs='+')
 arg_parser.add_argument('-r', '--receipts', dest='receipts', default=[],
@@ -111,9 +128,17 @@ arg_parser.add_argument('-i', '--indent', dest='indent', type=int,
 arg_parser.add_argument('-iso', '--iso8601', action='store_false',
                         help='залишити дату транзакції у форматі '
                         'datetime ISO 8601')
+arg_parser.add_argument('-l', '--lastload', action='store_true',
+                        help='показати дату повного завантаження усіх '
+                        'платежів')
+arg_parser.add_argument('-k', '--keep-json', action='store_true',
+                        help='зберегти файл JSON при зберіганні до бази '
+                        'даних SQLite')
+arg_parser.add_argument('-v', '--verbose', action='store_true',
+                        help='виводити додаткову інформацію')
 
 
-def iso8601_to_date(s):
+def iso8601_to_date(s, lastload=False):
     dt_regex = re.compile(
         "(\d{4}\-\d{2}\-\d{2}T\d{2}\:\d{2}\:\d{2})((?:\+|\-)\d{2}\:\d{2})"
         )
@@ -122,12 +147,11 @@ def iso8601_to_date(s):
         datetime_part, timezone_part = m.groups()
     else:
         return s
-
     d = datetime.strptime(
         "{}{}".format(datetime_part, re.sub('\:', '', timezone_part)),
-        '%Y-%m-%dT%H:%M:%S%z'
-        )
-
+        '%Y-%m-%dT%H:%M:%S%z')
+    if lastload:
+        return d.strftime('%a, %b %d %Y %H:%M:%S %Z')
     return d.strftime('%Y-%m-%d')
 
 
@@ -148,7 +172,7 @@ def iso8601_replace(edata):
     return edata
 
 
-def write_csv(edata):
+def make_csv(edata, verbose=None):
     fieldnames = ["amount", "payer_bank", "region_id", "trans_date",
                   "recipt_name", "id", "payment_details", "recipt_mfo",
                   "payer_edrpou", "recipt_bank", "recipt_edrpou", "payer_mfo",
@@ -162,11 +186,13 @@ def write_csv(edata):
             writer.writeheader()
             for row in edata:
                 writer.writerow(row)
+        if verbose:
+            sys.stdout.write("{} рядків записано\n".format(len(edata)))
     except:
         raise
 
 
-def make_sqlite(edata):
+def make_sqlite(edata, verbose=False):
     db = sqlite3.connect('edata.sqlite')
     c = db.cursor()
     qry = """CREATE TABLE IF NOT EXISTS edata (amount real, payer_bank text,
@@ -191,27 +217,32 @@ def make_sqlite(edata):
         :payment_details, :recipt_mfo, :payer_edrpou, :recipt_bank,
         :recipt_edrpou, :payer_mfo, :payer_name);"""
     try:
+        if verbose:
+            id2insert = [x['id'] for x in edata]
+            placeholders = ', '.join(['?']*len(id2insert))
+            query = 'SELECT COUNT(*) FROM edata WHERE id IN (%s)' \
+                % placeholders
+            c.execute(query, id2insert)
+            already_present = c.fetchone()[0]
+
         c.executemany(qry, ({k: d.get(k, values[k]) for k in values}
                       for d in edata))
+        if verbose:
+            processed_records = c.rowcount
+            print("Кількість оброблених записів: {:>10}"
+                  .format(processed_records))
+            print("Кількість доданих записів:    {:>10}"
+                  .format(processed_records - already_present))
     except:
         raise
     db.commit()
 
 
 def fetch(qry_dict, output_format=None, ascii=False, indent=False,
-          iso8601=False):
-    EDATA_URL = "http://api.e-data.gov.ua:8080/api/rest/1.0/transactions"
-    HEADERS = {
-        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:47.0) "
-        "Gecko/20100101 Firefox/47.0",
-        "Accept": "application/json,text/html,application/xhtml+xml,"
-        "application/xml;q=0.9,*/*;q=0.8",
-        'Content-Type': 'application/json',
-        }
-
+          iso8601=False, keep_json=None, verbose=False):
     try:
         r = requests.post(
-            EDATA_URL,
+            EDATA_API_URL + '/transactions',
             headers=HEADERS,
             data=json.dumps(qry_dict)
             )
@@ -238,12 +269,30 @@ def fetch(qry_dict, output_format=None, ascii=False, indent=False,
         if iso8601:
             edata_json = iso8601_replace(edata_json)
         if output_format == '0x2':    # json
-            with open('edata.json', 'w', encoding='utf-8') as f:
-                json.dump(edata_json, f, ensure_ascii=ascii, indent=indent)
+            make_json(edata_json, ensure_ascii=ascii, indent=indent,
+                      verbose=verbose)
         elif output_format == '0x4':  # csv
-            write_csv(edata_json['response']['transactions'])
+            make_csv(edata_json['response']['transactions'],
+                     verbose=verbose)
         elif output_format == '0x8':  # sqlite
-            make_sqlite(edata_json['response']['transactions'])
+            if keep_json:
+                make_json(edata_json, ensure_ascii=ascii, indent=indent,
+                          verbose=False)
+            make_sqlite(edata_json['response']['transactions'],
+                        verbose=verbose)
+
+
+def make_json(edata_json, ensure_ascii=None, indent=None, verbose=None):
+    try:
+        with open('edata.json', 'w', encoding='utf-8') as f:
+            json.dump(edata_json, f, ensure_ascii=ascii, indent=indent)
+    except:
+        raise
+    else:
+        if verbose:
+            sys.stdout.write("{} значень збережено\n".format(
+                len(edata_json['response']['transactions']))
+                )
 
 
 def checkdate(date_string):
@@ -285,6 +334,22 @@ def check_date_order(startdate, enddate):
     return
 
 
+def show_lastload():
+    try:
+        r = requests.get(
+            EDATA_API_URL + '/lastload',
+            headers=HEADERS,
+            )
+        lastload_json = r.json()
+    except:
+        raise
+    else:
+        d = iso8601_to_date(lastload_json['response']['lastload'],
+                            lastload=True)
+        print(d)
+        sys.exit(0)
+
+
 def compose_data_dict(
         payers_edrpous,
         recipt_edrpous,
@@ -312,10 +377,30 @@ def get_date_value(date_):
 
 def main():
     results = arg_parser.parse_args()
+
+    if len(sys.argv) == 1:
+        arg_parser.print_help()
+        sys.exit(2)
+
+    try:
+        if results.lastload and not (results.payers or results.receipts):
+            show_lastload()
+        elif results.lastload and (results.payers or results.receipts):
+            raise OnlyLastLoadParameterIsAllowedError
+    except OnlyLastLoadParameterIsAllowedError:
+        sys.exit(2)
+
+    try:
+        output_formats = [results.json, results.csv, results.sqlite]
+        if sum(output_formats) > 1:
+            raise OnlyOneOutputFormatIsAllowedError
+    except OnlyOneOutputFormatIsAllowedError:
+        sys.exit(2)
+
     # format constants:
-    # json   - 0x2
-    # csv    - 0x4
-    # sqlite - 0x8
+    # 0x2: json
+    # 0x4: csv
+    # 0x8: sqlite
     if results.json:
         format_ = '0x2'
     elif results.csv:
@@ -325,11 +410,14 @@ def main():
 
     if (not results.json) and results.indent:
         results.indent = False
-        print('Параметр -i/--indent проігноровано.\n')
+        print('Параметр `--indent` проігноровано.\n')
 
-    if not (results.payers or results.receipts):
-        raise NoOutputFormatSpecifiedError
+    try:
+        if not (results.payers or results.receipts):
+            raise NoOutputFormatSpecifiedError
+    except NoOutputFormatSpecifiedError:
         sys.exit(2)
+
     startdate, enddate = get_date_value(results.startdate), \
         get_date_value(results.enddate)
 
@@ -344,7 +432,7 @@ def main():
             if not set(results.treasury).issubset(TREASURY):
                 raise WrongTreasuryInList
         except WrongTreasuryInList:
-            sys.exit(1)
+            sys.exit(2)
         finally:
             treasury = results.treasury
     else:
@@ -357,7 +445,8 @@ def main():
                             regions=treasury,
                             )
     fetch(qry, output_format=format_, ascii=results.ascii,
-          indent=results.indent, iso8601=results.iso8601)
+          indent=results.indent, iso8601=results.iso8601,
+          keep_json=results.keep_json, verbose=results.verbose)
 
 
 if __name__ == '__main__':
