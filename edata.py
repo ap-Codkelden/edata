@@ -19,6 +19,7 @@ import sys
 import re
 from datetime import datetime
 from requests.exceptions import ConnectionError
+from requests.packages.urllib3.exceptions import ProtocolError
 
 
 SQLITE_MAX_VARIABLE_NUMBER = 999
@@ -356,8 +357,9 @@ def show_lastload():
             headers=HEADERS,
             )
         lastload_json = r.json()
-    except:
-        raise
+    except (ConnectionError, ProtocolError) as e:
+        print("Помилка з'єднання: `{}`".format(e.args[0].args[0]))
+        sys.exit(1)
     else:
         d = iso8601_to_date(lastload_json['response']['lastload'],
                             lastload=True)
