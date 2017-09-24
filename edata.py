@@ -28,6 +28,7 @@ DATE_DOTS = re.compile('(\d{2})\.(\d{2})\.(\d{4})')
 TREASURY = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
             19, 20, 21, 22, 23, 24, 25, 26, 27, 99]
 EDATA_API_URL = "http://api.e-data.gov.ua:8080/api/rest/1.0"
+
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:47.0) "
     "Gecko/20100101 Firefox/47.0",
@@ -191,10 +192,11 @@ def iso8601_replace(edata):
 
 
 def make_csv(edata, verbose=None):
-    fieldnames = ["amount", "payer_bank", "region_id", "trans_date",
-                  "recipt_name", "id", "payment_details", "recipt_mfo",
-                  "payer_edrpou", "recipt_bank", "recipt_edrpou", "payer_mfo",
-                  "payer_name", ]
+    fieldnames = ["id", 'doc_number', 'doc_date', 'doc_v_date', "trans_date",
+                  "amount", "payer_edrpou", "payer_name", 'payer_account',
+                  "payer_mfo", "payer_bank", "recipt_edrpou", "recipt_name",
+                  'recipt_account', "recipt_mfo", "recipt_bank", "region_id",
+                  'doc_add_attr', "payment_details",]
     try:
         with open('edata.csv', 'w') as csvfile:
             writer = csv.DictWriter(
@@ -218,20 +220,27 @@ def make_sqlite(edata, verbose=False):
         id integer PRIMARY KEY ON CONFLICT REPLACE,
         payment_details text, recipt_mfo integer NULL, payer_edrpou text,
         recipt_bank text NULL, recipt_edrpou text, payer_mfo integer NULL,
-        payer_name text NULL);"""
+        payer_name text NULL, doc_number text NULL, doc_date text, 
+        doc_v_date text, payer_account text, recipt_account text, 
+        doc_add_attr text NULL);"""
     values = {'amount': None, 'payer_bank': None, 'region_id': None,
               'trans_date': None, 'recipt_name': None, 'id': None,
               'payment_details': None, 'recipt_mfo': None,
               'payer_edrpou': None, 'recipt_bank': None,
-              'recipt_edrpou': None, 'payer_mfo': None, 'payer_name': None}
+              'recipt_edrpou': None, 'payer_mfo': None, 'payer_name': None,
+              'doc_number': None, 'doc_date': None, 'doc_v_date': None, 
+              'payer_account': None, 'recipt_account': None,
+              'doc_add_attr': None,}
     c.execute(qry)
 
     qry = """INSERT INTO edata (amount, payer_bank, region_id, trans_date,
         recipt_name, id, payment_details, recipt_mfo, payer_edrpou,
-        recipt_bank, recipt_edrpou, payer_mfo, payer_name) VALUES (:amount,
-        :payer_bank, :region_id, :trans_date, :recipt_name, :id,
-        :payment_details, :recipt_mfo, :payer_edrpou, :recipt_bank,
-        :recipt_edrpou, :payer_mfo, :payer_name);"""
+        recipt_bank, recipt_edrpou, payer_mfo, payer_name, doc_number, 
+        doc_date, doc_v_date, payer_account, recipt_account, doc_add_attr) 
+        VALUES (:amount, :payer_bank, :region_id, :trans_date, :recipt_name, 
+        :id, :payment_details, :recipt_mfo, :payer_edrpou, :recipt_bank,
+        :recipt_edrpou, :payer_mfo, :payer_name, :doc_number, :doc_date,
+        :doc_v_date, :payer_account, :recipt_account, :doc_add_attr);"""
     try:
         if verbose:
             present_records = 0
