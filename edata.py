@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# Copyright (c) 2016 Renat Nasridinov
+# Copyright (c) 2016-2017 Renat Nasridinov
 # This software may be freely distributed under the MIT license.
 # https://opensource.org/licenses/MIT The MIT License (MIT)
 # or see LICENSE file
@@ -9,6 +9,10 @@
 # This software needs Requests -- Non-GMO HTTP library for Python
 # Requests -- Python HTTP for Humans
 # <https://pypi.python.org/pypi/requests/>
+
+# TODO:
+# procedure for CSV download
+# URL parts as constants
 
 import requests
 import json
@@ -20,21 +24,21 @@ import re
 from datetime import datetime
 from requests.exceptions import ConnectionError
 from requests.packages.urllib3.exceptions import ProtocolError
+from regions import REGIONS
 
 
 SQLITE_MAX_VARIABLE_NUMBER = 999
-DATE_DASH = re.compile('(\d{2})\-(\d{2})\-(\d{4})')
-DATE_DOTS = re.compile('(\d{2})\.(\d{2})\.(\d{4})')
-TREASURY = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
-            19, 20, 21, 22, 23, 24, 25, 26, 27, 99]
-EDATA_API_URL = "http://api.e-data.gov.ua:8080/api/rest/1.0"
+ISO_DATE_TEMPLATE = re.compile('(\d{4})\-(\d{2})\-(\d{2})')
+TREASURY = [x['regionCode'] for x in REGIONS]
+ZIPPED_CSV_NAME = '_transactions'
+ZIPPED_STAT_NAME = '_stat'
+EDATA_API_URL = "http://api.spending.gov.ua/api"
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:47.0) "
     "Gecko/20100101 Firefox/47.0",
-    "Accept": "application/json,text/html,application/xhtml+xml,"
-    "application/xml;q=0.9,*/*;q=0.8",
-    'Content-Type': 'application/json',
+    "Accept": "application/json",
+    'Content-Type': 'application/json'
     }
 
 
@@ -59,6 +63,14 @@ class OnlyOneOutputFormatIsAllowedError(Error):
             )
 
 
+class Top100WithEDRPOUError(Error):
+    def __init__(self):
+        sys.stderr.write(
+            'Параметр --top100 не може використовуватися разом з кодами '
+            'ЄДРПОУ отримувачів коштів та платників, ігноруємо…\n'
+            )
+
+
 class OnlyLastLoadParameterIsAllowedError(Error):
     def __init__(self):
         sys.stderr.write(
@@ -74,7 +86,7 @@ class NoDataReturnError(Error):
 
 class EDataSystemError(Error):
     def __init__(self, message):
-        self.message = "Отримано помилку API порталу Є-Data:\n" \
+        self.message = "Помилка API порталу Є-Data:\n" \
             "{}\n".format(message)
 
 
@@ -91,6 +103,22 @@ class DateOrderViolation(Error):
             )
 
 
+class DatesWithoutPayersError(Error):
+    def __init__(self):
+        sys.stderr.write(
+            'Початкова та/або кінцева дата зазначені без кодів платників '
+            'або отримувачів, параметри проігноровано.\n'
+            )
+
+
+class StatisticProcNeedsParameterError(Error):
+    def __init__(self):
+        sys.stderr.write(
+            'Ця процедура потребує наявності одного з параметрів `--doc` або '
+            '`--org`. Вкажіть потрібний і запустіть скрипт знову.\n'
+            )
+
+
 class WrongTreasuryInList(Error):
     def __init__(self):
         sys.stderr.write('Казначейства з даним кодом не існує.\n')
@@ -101,44 +129,85 @@ arg_parser = argparse.ArgumentParser(
     usage=None,
     description="Отримує дані з порталу державних коштів Є-Data та зберігає "
     "їх в різноманітні формати файлів",
-    epilog=None
+    epilog=None,
     )
 
+subparsers = arg_parser.add_subparsers(dest='subparser_name')
 
-arg_parser.add_argument("-j", "--json", action='store_true',
-                        help="Зберегти у файл JSON")
-arg_parser.add_argument('-c', '--csv', action='store_true', help='зберегти '
-                        'у файл CSV')
-arg_parser.add_argument('-sql', '--sqlite', action='store_true',
-                        help='записати у базу даних SQLite')
-arg_parser.add_argument('-p', '--payers', dest='payers', default=[],
-                        help='відправники платежу', type=str,  nargs='+')
-arg_parser.add_argument('-r', '--receipts', dest='receipts', default=[],
-                        help='отримувачі платежу', type=str, nargs='+')
-arg_parser.add_argument('-s', '--startdate', action='store', type=str,
-                        help='початкова дата пошуку транзакцій',
-                        dest="startdate")
-arg_parser.add_argument('-e', '--enddate', action='store', type=str,
-                        help='кінцева дата пошуку транзакцій', dest="enddate")
-arg_parser.add_argument('-t', '--treasury', nargs='+', default=[], type=int,
-                        help='перелік регіональних управлінь ДКС',
-                        dest="treasury")
-arg_parser.add_argument('-a', '--ascii', action='store_true', help='вивести '
-                        'ASCII-сумісний JSON-файл')
-arg_parser.add_argument('-i', '--indent', dest='indent', type=int,
-                        help='кількість пробілів для відступу у JSON-файлі',
-                        default=0)
-arg_parser.add_argument('-iso', '--iso8601', action='store_false',
-                        help='залишити дату транзакції у форматі '
-                        'datetime ISO 8601')
-arg_parser.add_argument('-l', '--lastload', action='store_true',
-                        help='показати дату повного завантаження усіх '
-                        'платежів')
-arg_parser.add_argument('-k', '--keep-json', action='store_true',
-                        help='зберегти файл JSON при зберіганні до бази '
-                        'даних SQLite')
-arg_parser.add_argument('-v', '--verbose', action='store_true',
-                        help='виводити додаткову інформацію')
+# Дані по транзакціях
+trans_parser = subparsers.add_parser(
+    'transactions',
+    help='Отримання інформації щодо трансакцій і збереження її у різних '
+    'форматах'
+    )
+# Статистика документів на порталі
+stat_parser = subparsers.add_parser(
+    'statistic',
+    help='Статистика документів на порталі (лише JSON)'
+    )
+doc_org_group = stat_parser.add_mutually_exclusive_group()
+# Довідник регіонів
+region_parser = subparsers.add_parser('regions', help='Довідник регіонів')
+# Статистика по документах органиізацій
+cabinets_parser = subparsers.add_parser(
+    'cabinets',
+    help='Статистика по документах органиізацій (zipped CSV)'
+    )
+trans_parser.add_argument(
+    '-v', '--verbose', action='store_true',
+    help='виводити додаткову інформацію'
+    )
+trans_parser.add_argument("-j", "--json", action='store_true',
+                          help="Зберегти у файл JSON")
+trans_parser.add_argument('-c', '--csv', action='store_true', help='зберегти '
+                          'у файл CSV')
+trans_parser.add_argument('-sql', '--sqlite', action='store_true',
+                          help='записати у базу даних SQLite')
+trans_parser.add_argument('-p', '--payers', dest='payers', default=[],
+                          help='відправники платежу', type=str,  nargs='+')
+trans_parser.add_argument('-r', '--receipts', dest='receipts', default=[],
+                          help='отримувачі платежу', type=str, nargs='+')
+trans_parser.add_argument('-s', '--startdate', action='store', type=str,
+                          help='початкова дата пошуку транзакцій',
+                          dest="startdate")
+trans_parser.add_argument('-e', '--enddate', action='store', type=str,
+                          help='кінцева дата пошуку транзакцій',
+                          dest="enddate")
+trans_parser.add_argument('-t', '--treasury', nargs='+', default=[], type=int,
+                          help='перелік регіональних управлінь ДКС',
+                          dest="treasury")
+trans_parser.add_argument('-a', '--ascii', action='store_true', help='вивести '
+                          'ASCII-сумісний JSON-файл')
+trans_parser.add_argument('-i', '--indent', dest='indent', type=int,
+                          help='кількість пробілів для відступу у JSON-файлі',
+                          default=0)
+trans_parser.add_argument('-l', '--lastload', action='store_true',
+                          help='показати дату повного завантаження усіх '
+                          'платежів')
+trans_parser.add_argument('-k', '--keep-json', action='store_true',
+                          help='зберегти файл JSON при зберіганні до бази '
+                          'даних SQLite')
+trans_parser.add_argument('--ping', action='store_true',
+                          help='перевірити доступність API')
+trans_parser.add_argument('--top', action='store_true', dest='top100',
+                          help='Повертає Топ 100 транзакцій по регіону')
+
+region_parser.add_argument('-p', '--ping', action='store_true',
+                           help='Перевірка доступності API')
+region_parser.add_argument('-v', '--verbose', action='store_true',
+                           help='виводити додаткову інформацію')
+region_parser.add_argument('-a', '--ascii', action='store_true', help='вивести'
+                           ' ASCII-сумісний JSON-файл')
+
+stat_parser.add_argument('-v', '--verbose', action='store_true',
+                         help='виводити додаткову інформацію')
+stat_parser.add_argument('-a', '--ascii', action='store_true', help='вивести '
+                         'ASCII-сумісний JSON-файл')
+doc_org_group.add_argument('--org', action='store_true', help='Зберегти '
+                           'статистику документів організацій на порталі')
+doc_org_group.add_argument('--doc', action='store_true', help='Зберегти '
+                           'агреговану ститистику документів на порталі '
+                           '(загальні кількість/кількість оприлюднених)')
 
 
 def show_db_stats(processed_records, present_records):
@@ -157,59 +226,21 @@ def chunks(list_, n):
         yield list_[i:i + n]
 
 
-def iso8601_to_date(s, lastload=False):
-    dt_regex = re.compile(
-        "(\d{4}\-\d{2}\-\d{2}T\d{2}\:\d{2}\:\d{2})((?:\+|\-)\d{2}\:\d{2})"
-        )
-    m = dt_regex.match(s)
-    if m:
-        datetime_part, timezone_part = m.groups()
-    else:
-        return s
-    d = datetime.strptime(
-        "{}{}".format(datetime_part, re.sub('\:', '', timezone_part)),
-        '%Y-%m-%dT%H:%M:%S%z')
-    if lastload:
-        return d.strftime('%a, %b %d %Y %H:%M:%S %Z')
-    return d.strftime('%Y-%m-%d')
-
-
 def _date_generator(edata_transactions):
     transactions = [t for t in edata_transactions]
     for t in transactions:
         yield t
 
 
-def iso8601_replace(edata):
-    transactions = _date_generator(edata['response']['transactions'])
-    new_transactions = []
-    edata['response']['transactions'] = None
-    for t in transactions:
-        t['trans_date'] = iso8601_to_date(t['trans_date'])
-        new_transactions.append(t)
-    edata['response']['transactions'] = new_transactions
-    return edata
-
-
-def make_csv(edata, verbose=None):
-    fieldnames = ["id", 'doc_number', 'doc_date', 'doc_v_date', "trans_date",
-                  "amount", "payer_edrpou", "payer_name", 'payer_account',
-                  "payer_mfo", "payer_bank", "recipt_edrpou", "recipt_name",
-                  'recipt_account', "recipt_mfo", "recipt_bank", "region_id",
-                  'doc_add_attr', "payment_details",]
-    try:
-        with open('edata.csv', 'w') as csvfile:
-            writer = csv.DictWriter(
-                csvfile, fieldnames=fieldnames,
-                delimiter=';', quoting=csv.QUOTE_NONNUMERIC
-                )
-            writer.writeheader()
-            for row in edata:
-                writer.writerow(row)
-        if verbose:
-            sys.stdout.write("{} рядків записано\n".format(len(edata)))
-    except:
-        raise
+def save_file(binary_iter_content, file_name, verbose=None):
+    if re.match('^.+?\.zip$', file_name):
+        # re.sub(pattern, repl, string, count=0, flags=0)
+        file_name = re.sub('zip$', '', file_name)
+    with open(file_name+'.zip', 'wb') as f:
+        for chunk in binary_iter_content(chunk_size=1024):
+            if chunk:
+                f.write(chunk)
+    return
 
 
 def make_sqlite(edata, verbose=False):
@@ -220,24 +251,24 @@ def make_sqlite(edata, verbose=False):
         id integer PRIMARY KEY ON CONFLICT REPLACE,
         payment_details text, recipt_mfo integer NULL, payer_edrpou text,
         recipt_bank text NULL, recipt_edrpou text, payer_mfo integer NULL,
-        payer_name text NULL, doc_number text NULL, doc_date text, 
-        doc_v_date text, payer_account text, recipt_account text, 
+        payer_name text NULL, doc_number text NULL, doc_date text,
+        doc_v_date text, payer_account text, recipt_account text,
         doc_add_attr text NULL);"""
     values = {'amount': None, 'payer_bank': None, 'region_id': None,
               'trans_date': None, 'recipt_name': None, 'id': None,
               'payment_details': None, 'recipt_mfo': None,
               'payer_edrpou': None, 'recipt_bank': None,
               'recipt_edrpou': None, 'payer_mfo': None, 'payer_name': None,
-              'doc_number': None, 'doc_date': None, 'doc_v_date': None, 
+              'doc_number': None, 'doc_date': None, 'doc_v_date': None,
               'payer_account': None, 'recipt_account': None,
-              'doc_add_attr': None,}
+              'doc_add_attr': None}
     c.execute(qry)
 
     qry = """INSERT INTO edata (amount, payer_bank, region_id, trans_date,
         recipt_name, id, payment_details, recipt_mfo, payer_edrpou,
-        recipt_bank, recipt_edrpou, payer_mfo, payer_name, doc_number, 
-        doc_date, doc_v_date, payer_account, recipt_account, doc_add_attr) 
-        VALUES (:amount, :payer_bank, :region_id, :trans_date, :recipt_name, 
+        recipt_bank, recipt_edrpou, payer_mfo, payer_name, doc_number,
+        doc_date, doc_v_date, payer_account, recipt_account, doc_add_attr)
+        VALUES (:amount, :payer_bank, :region_id, :trans_date, :recipt_name,
         :id, :payment_details, :recipt_mfo, :payer_edrpou, :recipt_bank,
         :recipt_edrpou, :payer_mfo, :payer_name, :doc_number, :doc_date,
         :doc_v_date, :payer_account, :recipt_account, :doc_add_attr);"""
@@ -264,22 +295,34 @@ def make_sqlite(edata, verbose=False):
 
 
 def fetch(qry_dict, output_format=None, ascii=False, indent=False,
-          iso8601=False, keep_json=None, verbose=False):
+          keep_json=None, top100=None, verbose=None):
+    transactions_api_part = '/v2/api/transactions/top100' if top100 \
+        and not qry_dict else '/v2/api/transactions/'
+    if output_format == '0x4':
+        HEADERS['Accept'] = 'application/octet-stream'
     try:
-        r = requests.post(
-            EDATA_API_URL + '/transactions',
-            headers=HEADERS,
-            data=json.dumps(qry_dict)
-            )
-        edata_json = r.json()
-        if 'transactions' in edata_json['response']:
-            if not edata_json['response']['transactions']:
-                if not edata_json['response']['errors']:
-                    raise NoDataReturnError
+        r = requests.get(EDATA_API_URL + transactions_api_part,
+                         headers=HEADERS,
+                         params=qry_dict
+                         )
+        if output_format == '0x4':
+            if r.status_code == 200:
+                try:
+                    save_file(r.iter_content, ZIPPED_CSV_NAME, verbose)
+                except:
+                    raise
                 else:
-                    raise EDataSystemError(
-                        edata_json['response']['errors'][0]['error']
-                        )
+                    return(0)
+            elif r.status_code in (403, 403, 404):
+                r.raise_for_status()
+        edata_json = r.json()
+        if 'error' in edata_json:
+            raise EDataSystemError(
+                edata_json['error']
+                )
+    except requests.exceptions.HTTPError as e:
+        print(e.args[0])
+        sys.exit(1)
     except ConnectionError as e:
         print("Помилка з'єднання: `{}`".format(e.args[0].args[0]))
         sys.exit(1)
@@ -291,19 +334,14 @@ def fetch(qry_dict, output_format=None, ascii=False, indent=False,
     except:
         raise
     else:
-        if iso8601:
-            edata_json = iso8601_replace(edata_json)
         if output_format == '0x2':    # json
             make_json(edata_json, ensure_ascii=ascii, indent=indent,
                       verbose=verbose)
-        elif output_format == '0x4':  # csv
-            make_csv(edata_json['response']['transactions'],
-                     verbose=verbose)
         elif output_format == '0x8':  # sqlite
             if keep_json:
                 make_json(edata_json, ensure_ascii=ascii, indent=indent,
                           verbose=False)
-            make_sqlite(edata_json['response']['transactions'],
+            make_sqlite(edata_json,
                         verbose=verbose)
 
 
@@ -321,36 +359,28 @@ def make_json(edata_json, ensure_ascii=None, indent=None, verbose=None):
 
 
 def checkdate(date_string):
-    do, da = DATE_DOTS.match(date_string), DATE_DASH.match(date_string)
+    iso_date = ISO_DATE_TEMPLATE.match(date_string)
     try:
-        if not (da or do):
+        if not iso_date:
             raise ValueIsNotADateError(
-                'Передане значення `{}` не відповідає допустимому формату '
-                'дати'.format(date_string)
+                'Передане значення `{}` не відповідає '
+                'допустимому формату дати. Допустимий формат ISO8601: '
+                '`YYYY-MM-DD`'.format(date_string)
                 )
     except ValueIsNotADateError as e:
         print(e.message)
         sys.exit(1)
     try:
-        if da:
-            date_string = '{}-{}-{}'.format(
-                da.group(1), da.group(2), da.group(3)
-                )
-            datetime.strptime(date_string, "%d-%m-%Y")
-        elif do:
-            datetime.strptime(date_string, "%d.%m.%Y")
-    except ValueError:
-        print('Значення `{}` вигядає як дата, але є '
-              'некоректним.'.format(date_string))
+        datetime.strptime(date_string, "%Y-%m-%d")
+    except ValueError as e:
+        print(e.args[0])
         sys.exit(1)
     else:
-        return date_string if re.search('\-', date_string) \
-            else re.sub('\.', '-', date_string)
+        return date_string
 
 
 def get_date(d):
-    return datetime.strptime(d, "%d-%m-%Y" if re.search('\-', d)
-                             else "%d.%m.%Y")
+    return datetime.strptime(d, "%Y-%m-%d")
 
 
 def check_date_order(startdate, enddate):
@@ -359,20 +389,44 @@ def check_date_order(startdate, enddate):
     return
 
 
-def show_lastload():
+def ping(regions=None):
+    ping_url_part = '/v2/regions/ping' if regions else \
+        '/v2/api/transactions/ping'
     try:
         r = requests.get(
-            EDATA_API_URL + '/lastload',
+            EDATA_API_URL + ping_url_part,
             headers=HEADERS,
             )
-        lastload_json = r.json()
+        if r.status_code == 200:
+            print('{}API is alive!'.format('Regions ' if regions else ''))
+        elif r.status_code in (403, 403, 404):
+            r.raise_for_status()
     except (ConnectionError, ProtocolError) as e:
         print("Помилка з'єднання: `{}`".format(e.args[0].args[0]))
         sys.exit(1)
     else:
-        d = iso8601_to_date(lastload_json['response']['lastload'],
-                            lastload=True)
-        print(d)
+        sys.exit(0)
+
+
+def show_lastload(verbose=None):
+    try:
+        r = requests.get(
+            EDATA_API_URL + '/v2/api/transactions/lastload',
+            headers=HEADERS,
+            )
+        lastload_json = r.json()
+        if verbose:
+            if r.status_code == 200:
+                print('Response 200, OK…')
+        if r.status_code in (403, 403, 404):
+            r.raise_for_status()
+    except (ConnectionError, ProtocolError) as e:
+        print("Помилка з'єднання: `{}`".format(e.args[0].args[0]))
+        sys.exit(1)
+    else:
+        d = lastload_json['lastLoad']
+        d1 = datetime.strptime(d, '%Y-%m-%d')
+        print(d1.strftime('%a, %b %d %Y'))
         sys.exit(0)
 
 
@@ -384,37 +438,45 @@ def compose_data_dict(
         regions=None
         ):
     d = {}
-    if startdate:
-        d['startdate'] = startdate
-    if enddate:
-        d['enddate'] = enddate
-    if payers_edrpous:
-        d['payers_edrpous'] = payers_edrpous
-    if recipt_edrpous:
-        d['recipt_edrpous'] = recipt_edrpous
-    if regions:
-        d['regions'] = regions
-    return d
+    try:
+        if (startdate or enddate) and not (payers_edrpous or recipt_edrpous):
+            raise DatesWithoutPayersError
+        if startdate:
+            d['startdate'] = startdate
+        if enddate:
+            d['enddate'] = enddate
+        if payers_edrpous:
+            d['payers_edrpous'] = payers_edrpous
+        if recipt_edrpous:
+            d['recipt_edrpous'] = recipt_edrpous
+        if regions:
+            d['regions'] = regions
+    except DatesWithoutPayersError:
+        pass
+    finally:
+        return d
 
 
 def get_date_value(date_):
     return checkdate(date_) if date_ else None
 
 
-def main():
-    results = arg_parser.parse_args()
-
-    if len(sys.argv) == 1:
-        arg_parser.print_help()
-        sys.exit(2)
+def transactions(results):
+    # results = arg_parser.parse_args()
 
     try:
         if results.lastload and not (results.payers or results.receipts):
-            show_lastload()
+            show_lastload(verbose=results.verbose)
+        elif results.ping and not (results.payers or results.receipts):
+            ping(regions=False)
         elif results.lastload and (results.payers or results.receipts):
             raise OnlyLastLoadParameterIsAllowedError
+        elif results.top100 and (results.payers or results.receipts):
+            raise Top100WithEDRPOUError
     except OnlyLastLoadParameterIsAllowedError:
         sys.exit(2)
+    except Top100WithEDRPOUError:
+        pass
 
     try:
         output_formats = [results.json, results.csv, results.sqlite]
@@ -443,7 +505,7 @@ def main():
                          'збереження проводиться не в базу даних SQLite.\n')
 
     try:
-        if not (results.payers or results.receipts):
+        if not (results.payers or results.receipts) and not results.top100:
             raise NoOutputFormatSpecifiedError
     except NoOutputFormatSpecifiedError:
         sys.exit(2)
@@ -475,9 +537,102 @@ def main():
                             regions=treasury,
                             )
     fetch(qry, output_format=format_, ascii=results.ascii,
-          indent=results.indent, iso8601=results.iso8601,
+          top100=results.top100, indent=results.indent,
           keep_json=results.keep_json, verbose=results.verbose)
 
 
+def _stat_get_org(verbose=None):
+    stat_part = '/v2/stat/organizations/csv'
+    HEADERS['Accept'] = 'application/octet-stream'
+    try:
+        r = requests.get(EDATA_API_URL + stat_part,
+                         headers=HEADERS,
+                         )
+        if r.status_code in (403, 403, 404):
+            r.raise_for_status()
+        if r.status_code != 200:
+            raise CannotFetchStatFileError
+    except CannotFetchStatFileError:
+        sys.exit(1)
+    except:
+        raise
+    else:
+        save_file(r.iter_content, ZIPPED_STAT_NAME, verbose)
+
+
+def _stat_get_doc(url, ascii=None, verbose=None):
+    try:
+        _download_arbitrary_json(url, ascii=ascii, verbose=verbose,
+                                 json_filename='_stat_documents.json',
+                                 )
+    except:
+        raise
+    else:
+        sys.exit(0)
+
+
+def statistic(org, doc, ascii=None, verbose=None):
+    try:
+        if not (org or doc):
+            raise StatisticProcNeedsParameterError
+    except StatisticProcNeedsParameterError:
+        sys.exit(1)
+
+    try:
+        if org:
+            _stat_get_org(verbose)
+        elif doc:
+            _stat_get_doc('/v2/stat/documents', ascii, verbose)
+    except:
+        raise
+    else:
+        sys.exit(0)
+
+
+def _download_arbitrary_json(url_part, ascii, json_filename, verbose):
+    '''Downloads JSON data through API URL and saves it to
+    file with specified name'''
+    try:
+        r = requests.get(EDATA_API_URL + url_part,
+                         headers=HEADERS,
+                         )
+        if r.status_code in (403, 403, 404):
+            r.raise_for_status()
+    except:
+        raise
+    else:
+        if r.status_code == 200:
+            with open(json_filename, 'w') as json_file:
+                json.dump(r.json(), json_file, ensure_ascii=ascii)
+        return
+
+
+def regions(ping_region=None, ascii=None, verbose=None):
+    if ping_region:
+        ping(regions=True)
+    region_list_part = '/v2/regions'
+    try:
+        _download_arbitrary_json(
+            '/v2/regions', ascii=ascii, json_filename='_regions.json',
+            verbose=verbose
+            )
+    except:
+        raise
+    else:
+        sys.exit(0)
+
+
 if __name__ == '__main__':
-    main()
+    if len(sys.argv) == 1:
+        arg_parser.print_help()
+        sys.exit(2)
+    results = arg_parser.parse_args()
+    command = results.subparser_name
+    if command == 'transactions':
+        transactions(results)
+    elif command == 'statistic':
+        statistic(results.org, results.doc, results.ascii, results.verbose,)
+    elif command == 'regions':
+        regions(results.ping, results.ascii)
+    elif command == 'cabinets':
+        cabinets(results)
