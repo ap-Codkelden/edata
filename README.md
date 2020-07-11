@@ -33,7 +33,7 @@
 * [клонувати](https://git-scm.com/book/it/v2/Git-Basics-Getting-a-Git-Repository#Cloning-an-Existing-Repository) даний репозиторій
 
 Встановлення скрипти не потребують, головне — запам'ятати директорію, у яку буде 
-збережено файли `edata.py` та `json2sqlite.py`.
+збережено файли `edata.py`, `regions.py` та `json2sqlite.py`.
 
 ### Запуск ###
 
