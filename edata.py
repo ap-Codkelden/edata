@@ -332,7 +332,9 @@ def fetch(qry_dict, output_format=None, ascii=False, indent=False,
         print(e.message)
         sys.exit(1)
     except:
-        raise
+        print(r.text)
+        sys.exit(1)
+        # raise
     else:
         if output_format == '0x2':    # json
             make_json(edata_json, ensure_ascii=ascii, indent=indent,
