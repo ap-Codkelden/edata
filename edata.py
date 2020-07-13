@@ -46,7 +46,7 @@ class Error(Exception):
     pass
 
 
-class NoOutputFormatSpecifiedError(Error):
+class NoEDRPOUError(Error):
     def __init__(self):
         sys.stderr.write(
             'Не вказано ані відправників (параметр -p/--payers),'
@@ -160,7 +160,7 @@ trans_parser.add_argument(
 trans_parser.add_argument("-j", "--json", action='store_true',
                           help="Зберегти у файл JSON")
 trans_parser.add_argument('-c', '--csv', action='store_true', help='зберегти '
-                          'у файл CSV')
+                          'у файл CSV (за замовчуванням)')
 trans_parser.add_argument('-sql', '--sqlite', action='store_true',
                           help='записати у базу даних SQLite')
 trans_parser.add_argument('-p', '--payers', dest='payers', default=[],
@@ -442,7 +442,8 @@ def compose_data_dict(
     d = {}
     try:
         if (startdate or enddate) and not (payers_edrpous or recipt_edrpous):
-            raise DatesWithoutPayersError
+            if startdate != enddate:
+                raise DatesWithoutPayersError
         if startdate:
             d['startdate'] = startdate
         if enddate:
@@ -497,6 +498,8 @@ def transactions(results):
         format_ = '0x4'
     elif results.sqlite:
         format_ = '0x8'
+    else:
+        format_ = '0x4'
 
     if (not results.json) and results.indent:
         results.indent = False
@@ -506,14 +509,15 @@ def transactions(results):
         sys.stdout.write('Параметр `--keep-json` проігноровано, оскільки '
                          'збереження проводиться не в базу даних SQLite.\n')
 
-    try:
-        if not (results.payers or results.receipts) and not results.top100:
-            raise NoOutputFormatSpecifiedError
-    except NoOutputFormatSpecifiedError:
-        sys.exit(2)
-
     startdate, enddate = get_date_value(results.startdate), \
         get_date_value(results.enddate)
+
+    try:
+        if not results.top100:
+            if  startdate != enddate and not (results.payers or results.receipts):
+                raise NoEDRPOUError
+    except NoEDRPOUError:
+        sys.exit(2)
 
     if startdate and enddate:
         try:
@@ -616,8 +620,7 @@ def regions(ping_region=None, ascii=None, verbose=None):
     try:
         _download_arbitrary_json(
             '/v2/regions', ascii=ascii, json_filename='_regions.json',
-            verbose=verbose
-            )
+            verbose=verbose)
     except:
         raise
     else:
@@ -629,6 +632,7 @@ if __name__ == '__main__':
         arg_parser.print_help()
         sys.exit(2)
     results = arg_parser.parse_args()
+    print(results)
     command = results.subparser_name
     if command == 'transactions':
         transactions(results)
