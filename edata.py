@@ -30,7 +30,6 @@ from regions import REGIONS
 SQLITE_MAX_VARIABLE_NUMBER = 999
 ISO_DATE_TEMPLATE = re.compile('(\d{4})\-(\d{2})\-(\d{2})')
 TREASURY = [x['regionCode'] for x in REGIONS]
-ZIPPED_CSV_NAME = '_transactions'
 ZIPPED_STAT_NAME = '_stat'
 EDATA_API_URL = "http://api.spending.gov.ua/api"
 
@@ -208,6 +207,8 @@ doc_org_group.add_argument('--org', action='store_true', help='Зберегти 
 doc_org_group.add_argument('--doc', action='store_true', help='Зберегти '
                            'агреговану ститистику документів на порталі '
                            '(загальні кількість/кількість оприлюднених)')
+trans_parser.add_argument('--zipname', type=str, default='_transactions',
+                          help='імя ZIP-файлу з транзакціями',)
 
 
 def show_db_stats(processed_records, present_records):
@@ -295,7 +296,7 @@ def make_sqlite(edata, verbose=False):
 
 
 def fetch(qry_dict, output_format=None, ascii=False, indent=False,
-          keep_json=None, top100=None, verbose=None):
+          keep_json=None, top100=None, verbose=None, zipname=None):
     transactions_api_part = '/v2/api/transactions/top100' if top100 \
         and not qry_dict else '/v2/api/transactions/'
     if output_format == '0x4':
@@ -308,7 +309,7 @@ def fetch(qry_dict, output_format=None, ascii=False, indent=False,
         if output_format == '0x4':
             if r.status_code == 200:
                 try:
-                    save_file(r.iter_content, ZIPPED_CSV_NAME, verbose)
+                    save_file(r.iter_content, zipname, verbose)
                 except:
                     raise
                 else:
@@ -322,6 +323,7 @@ def fetch(qry_dict, output_format=None, ascii=False, indent=False,
                 )
     except requests.exceptions.HTTPError as e:
         print(e.args[0])
+        # raise
         sys.exit(1)
     except ConnectionError as e:
         print("Помилка з'єднання: `{}`".format(e.args[0].args[0]))
@@ -332,9 +334,9 @@ def fetch(qry_dict, output_format=None, ascii=False, indent=False,
         print(e.message)
         sys.exit(1)
     except:
-        print(r.text)
+        #print(r.text)
+        raise
         sys.exit(1)
-        # raise
     else:
         if output_format == '0x2':    # json
             make_json(edata_json, ensure_ascii=ascii, indent=indent,
@@ -544,7 +546,8 @@ def transactions(results):
                             )
     fetch(qry, output_format=format_, ascii=results.ascii,
           top100=results.top100, indent=results.indent,
-          keep_json=results.keep_json, verbose=results.verbose)
+          keep_json=results.keep_json, verbose=results.verbose,
+          zipname=results.zipname)
 
 
 def _stat_get_org(verbose=None):
