@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# Copyright (c) 2016-2017 Renat Nasridinov
+# Copyright (c) 2016-2020 Renat Nasridinov
 # This software may be freely distributed under the MIT license.
 # https://opensource.org/licenses/MIT The MIT License (MIT)
 # or see LICENSE file
