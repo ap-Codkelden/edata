@@ -16,7 +16,6 @@
 
 import requests
 import json
-import csv
 import sqlite3
 import argparse
 import sys
@@ -28,7 +27,7 @@ from regions import REGIONS
 
 
 SQLITE_MAX_VARIABLE_NUMBER = 999
-ISO_DATE_TEMPLATE = re.compile('(\d{4})\-(\d{2})\-(\d{2})')
+ISO_DATE_TEMPLATE = re.compile(r'(\d{4})-(\d{2})-(\d{2})')
 TREASURY = [x['regionCode'] for x in REGIONS]
 ZIPPED_STAT_NAME = '_stat'
 EDATA_API_URL = "http://api.spending.gov.ua/api"
@@ -67,6 +66,13 @@ class Top100WithEDRPOUError(Error):
         sys.stderr.write(
             'Параметр --top100 не може використовуватися разом з кодами '
             'ЄДРПОУ отримувачів коштів та платників, ігноруємо…\n'
+            )
+
+
+class CannotFetchStatFileError(Error):
+    def __init__(self):
+        sys.stderr.write(
+            'Не вдалося отримати файл статистики.\n'
             )
 
 
@@ -234,7 +240,7 @@ def _date_generator(edata_transactions):
 
 
 def save_file(binary_iter_content, file_name, verbose=None):
-    if re.match('^.+?\.zip$', file_name):
+    if re.match(r'^.+?\.zip$', file_name):
         # re.sub(pattern, repl, string, count=0, flags=0)
         file_name = re.sub('zip$', '', file_name)
     with open(file_name+'.zip', 'wb') as f:
@@ -279,8 +285,8 @@ def make_sqlite(edata, verbose=False):
             for chunk in chunks(edata, SQLITE_MAX_VARIABLE_NUMBER):
                 id2insert = [x['id'] for x in chunk]
                 placeholders = ', '.join(['?']*len(id2insert))
-                query = 'SELECT COUNT(*) FROM edata WHERE id IN (%s)' \
-                    % placeholders
+                query = "SELECT COUNT(*) FROM edata WHERE id IN (%s)" \
+                        % placeholders
                 c.execute(query, id2insert)
                 chunk_count = c.fetchone()[0]
                 present_records += chunk_count
@@ -290,7 +296,7 @@ def make_sqlite(edata, verbose=False):
         if verbose:
             processed_records = c.rowcount
             show_db_stats(processed_records, present_records)
-    except:
+    except Error:
         raise
     db.commit()
 
@@ -310,10 +316,10 @@ def fetch(qry_dict, output_format=None, ascii=False, indent=False,
             if r.status_code == 200:
                 try:
                     save_file(r.iter_content, zipname, verbose)
-                except:
+                except Error:
                     raise
                 else:
-                    return(0)
+                    return 0
             elif r.status_code in (403, 403, 404):
                 r.raise_for_status()
         edata_json = r.json()
@@ -333,10 +339,10 @@ def fetch(qry_dict, output_format=None, ascii=False, indent=False,
     except EDataSystemError as e:
         print(e.message)
         sys.exit(1)
-    except:
-        #print(r.text)
+    except Error:
+        # print(r.text)
         raise
-        sys.exit(1)
+        # sys.exit(1)
     else:
         if output_format == '0x2':    # json
             make_json(edata_json, ensure_ascii=ascii, indent=indent,
@@ -352,8 +358,8 @@ def fetch(qry_dict, output_format=None, ascii=False, indent=False,
 def make_json(edata_json, ensure_ascii=None, indent=None, verbose=None):
     try:
         with open('edata.json', 'w', encoding='utf-8') as f:
-            json.dump(edata_json, f, ensure_ascii=ascii, indent=indent)
-    except:
+            json.dump(edata_json, f, ensure_ascii=ensure_ascii, indent=indent)
+    except Error:
         raise
     else:
         if verbose:
@@ -467,8 +473,6 @@ def get_date_value(date_):
 
 
 def transactions(results):
-    # results = arg_parser.parse_args()
-
     try:
         if results.lastload and not (results.payers or results.receipts):
             show_lastload(verbose=results.verbose)
@@ -516,7 +520,7 @@ def transactions(results):
 
     try:
         if not results.top100:
-            if  startdate != enddate and not (results.payers or results.receipts):
+            if startdate != enddate and not (results.payers or results.receipts):
                 raise NoEDRPOUError
     except NoEDRPOUError:
         sys.exit(2)
@@ -563,7 +567,7 @@ def _stat_get_org(verbose=None):
             raise CannotFetchStatFileError
     except CannotFetchStatFileError:
         sys.exit(1)
-    except:
+    except Error:
         raise
     else:
         save_file(r.iter_content, ZIPPED_STAT_NAME, verbose)
@@ -574,7 +578,7 @@ def _stat_get_doc(url, ascii=None, verbose=None):
         _download_arbitrary_json(url, ascii=ascii, verbose=verbose,
                                  json_filename='_stat_documents.json',
                                  )
-    except:
+    except Error:
         raise
     else:
         sys.exit(0)
@@ -592,22 +596,22 @@ def statistic(org, doc, ascii=None, verbose=None):
             _stat_get_org(verbose)
         elif doc:
             _stat_get_doc('/v2/stat/documents', ascii, verbose)
-    except:
+    except Error:
         raise
     else:
         sys.exit(0)
 
 
 def _download_arbitrary_json(url_part, ascii, json_filename, verbose):
-    '''Downloads JSON data through API URL and saves it to
-    file with specified name'''
+    """Downloads JSON data through API URL and saves it to
+    file with specified name"""
     try:
         r = requests.get(EDATA_API_URL + url_part,
                          headers=HEADERS,
                          )
         if r.status_code in (403, 403, 404):
             r.raise_for_status()
-    except:
+    except Error:
         raise
     else:
         if r.status_code == 200:
@@ -624,7 +628,7 @@ def regions(ping_region=None, ascii=None, verbose=None):
         _download_arbitrary_json(
             '/v2/regions', ascii=ascii, json_filename='_regions.json',
             verbose=verbose)
-    except:
+    except Error:
         raise
     else:
         sys.exit(0)
