@@ -22,7 +22,7 @@ import sys
 import re
 from datetime import datetime
 from requests.exceptions import ConnectionError
-from requests.packages.urllib3.exceptions import ProtocolError
+from urllib3.exceptions import ProtocolError
 from regions import REGIONS
 
 
@@ -280,8 +280,8 @@ def make_sqlite(edata, verbose=False):
         :recipt_edrpou, :payer_mfo, :payer_name, :doc_number, :doc_date,
         :doc_v_date, :payer_account, :recipt_account, :doc_add_attr);"""
     try:
+        present_records: int = 0
         if verbose:
-            present_records = 0
             for chunk in chunks(edata, SQLITE_MAX_VARIABLE_NUMBER):
                 id2insert = [x['id'] for x in chunk]
                 placeholders = ', '.join(['?']*len(id2insert))
@@ -296,13 +296,13 @@ def make_sqlite(edata, verbose=False):
         if verbose:
             processed_records = c.rowcount
             show_db_stats(processed_records, present_records)
-    except Error:
+    except Exception as e:
         raise
     db.commit()
 
 
 def fetch(qry_dict, output_format=None, ascii=False, indent=False,
-          keep_json=None, top100=None, verbose=None, zipname=None):
+          keep_json=None, top100=None, verbose=False, zipname=None):
     transactions_api_part = '/v2/api/transactions/top100' if top100 \
         and not qry_dict else '/v2/api/transactions/'
     if output_format == '0x4':
@@ -355,7 +355,7 @@ def fetch(qry_dict, output_format=None, ascii=False, indent=False,
                         verbose=verbose)
 
 
-def make_json(edata_json, ensure_ascii=None, indent=None, verbose=None):
+def make_json(edata_json, ensure_ascii=False, indent=None, verbose=None):
     try:
         with open('edata.json', 'w', encoding='utf-8') as f:
             json.dump(edata_json, f, ensure_ascii=ensure_ascii, indent=indent)
@@ -584,6 +584,24 @@ def _stat_get_doc(url, ascii=None, verbose=None):
         sys.exit(0)
 
 
+def cabinets(results):
+    try:
+        # Optionally show verbose info
+        if results.verbose:
+            print("Fetching organizational documents statistics...")
+        _stat_get_org(verbose=results.verbose)
+
+    except CannotFetchStatFileError:
+        sys.stderr.write("Не вдалося отримати файл статистики.\n")
+        sys.exit(1)
+    except Error:
+        raise
+    else:
+        if results.verbose:
+            print("Organizational documents statistics saved successfully.")
+        sys.exit(0)
+
+
 def statistic(org, doc, ascii=None, verbose=None):
     try:
         if not (org or doc):
@@ -639,7 +657,7 @@ if __name__ == '__main__':
         arg_parser.print_help()
         sys.exit(2)
     results = arg_parser.parse_args()
-    print(results)
+    # print(results)
     command = results.subparser_name
     if command == 'transactions':
         transactions(results)
