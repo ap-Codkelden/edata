@@ -2,14 +2,16 @@
 # -*- coding: utf-8 -*-
 
 
-import edata
+from .edata import transactions
 import sys
 import argparse
 import time
 import os.path
 from collections import namedtuple
+from calendar import monthrange
 from datetime import timedelta, date, datetime
 from pathlib import Path
+from typing import Optional
 
 
 Namespace = namedtuple('Namespace', "csv,indent,json,keep_json,lastload,"
@@ -19,7 +21,7 @@ Namespace = namedtuple('Namespace', "csv,indent,json,keep_json,lastload,"
 Path("data").mkdir(parents=True, exist_ok=True)
 start_date = end_date = None
 
-def daterange(start_date, end_date):
+def daterange(start_date: date, end_date: date):
     for n in range(int((end_date - start_date).days)):
         k = start_date + timedelta(n)
         isodate = k.isoformat()
@@ -27,7 +29,7 @@ def daterange(start_date, end_date):
             print(isodate)
         yield k.weekday(), isodate
 
-def extract(start_date, end_date, verbose=None):
+def extract(start_date: date, end_date: date, verbose: Optional[bool]=None):
     for single_date in daterange(start_date, end_date):
         weekday, tr_date = single_date
         # if weekday >= 5:
@@ -42,8 +44,14 @@ def extract(start_date, end_date, verbose=None):
             payers=[], ping=False, receipts=[], sqlite=False,
             subparser_name='transactions', top100=False, treasury=[],
             verbose=False, zipname=os.path.join("data", tr_date))
-        edata.transactions(results)
+        transactions(results)
         time.sleep(1.5)
+
+
+def last_day_date(d: date):
+    y, m = d.year, d.month
+    last_day = monthrange(y, m)[1]
+    return date(y, m, last_day)
 
 
 if __name__ == "__main__":
@@ -52,19 +60,19 @@ if __name__ == "__main__":
                             help='початкова дата завантаження')
     arg_parser.add_argument('-ed', type=str,
                             help='кінцева дата завантаження. Якщо не вказана, '
-                            'береться сьогодні')
+                            'береться останній день місяця `start_date`')
     arg_parser.add_argument('-v', '--verbose', action="store_true",
                             help='вивід дат')
     args = arg_parser.parse_args()
     # print(args)
     try:
-        k1 = datetime.strptime(args.start_date, "%Y-%m-%d")
+        start_date= datetime.strptime(args.start_date, r"%Y-%m-%d").date()
+        if args.ed is None:
+            end_date = last_day_date(start_date) 
+        else:
+            end_date = datetime.strptime(args.ed, r"%Y-%m-%d").date() + timedelta(days=1)
     except ValueError as e:
-        print(e.args[0],
-              "Невірний формат дати, має бути ISO 8601")
+        print(e.args[0], "Невірний формат дати, має бути ISO 8601")
         sys.exit(1)
     else:
-        start_date = k1.date()
-        end_date = date.today() if args.ed is None else datetime.strptime(
-            args.ed, "%Y-%m-%d").date() + timedelta(days=1)
         extract(start_date, end_date, verbose=args.verbose)
