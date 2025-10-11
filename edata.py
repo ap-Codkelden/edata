@@ -23,7 +23,7 @@ import re
 from datetime import datetime
 from requests.exceptions import ConnectionError
 from urllib3.exceptions import ProtocolError
-from regions import REGIONS
+from .regions import REGIONS
 
 
 SQLITE_MAX_VARIABLE_NUMBER = 999
@@ -320,7 +320,7 @@ def fetch(qry_dict, output_format=None, ascii=False, indent=False,
                     raise
                 else:
                     return 0
-            elif r.status_code in (403, 403, 404):
+            elif r.status_code in (403, 403, 404, 500):
                 r.raise_for_status()
         edata_json = r.json()
         if 'error' in edata_json:
