@@ -51,7 +51,7 @@ def extract(start_date: date, end_date: date, verbose: Optional[bool]=None):
 def last_day_date(d: date):
     y, m = d.year, d.month
     last_day = monthrange(y, m)[1]
-    return date(y, m, last_day)
+    return date(y, m, last_day) + timedelta(days=1)
 
 
 if __name__ == "__main__":
