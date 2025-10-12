@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# Copyright (c) 2016-2020 Renat Nasridinov
+# Copyright (c) 2016-2025 Renat Nasridinov
 # This software may be freely distributed under the MIT license.
 # https://opensource.org/licenses/MIT The MIT License (MIT)
 # or see LICENSE file
@@ -24,6 +24,20 @@ from datetime import datetime
 from requests.exceptions import ConnectionError
 from urllib3.exceptions import ProtocolError
 from .regions import REGIONS
+from .errors import (
+    EdataError,
+    NoDataReturnError,
+    NoEDRPOUError,
+    EDataSystemError,
+    ValueIsNotADateError,
+    DateOrderViolation,
+    OnlyLastLoadParameterIsAllowedError,
+    OnlyOneOutputFormatIsAllowedError,
+    DatesWithoutPayersError,
+    Top100WithEDRPOUError,
+    WrongTreasuryInList,
+    CannotFetchStatFileError,
+    StatisticProcNeedsParameterError)
 
 
 SQLITE_MAX_VARIABLE_NUMBER = 999
@@ -38,95 +52,6 @@ HEADERS = {
     "Accept": "application/json",
     'Content-Type': 'application/json'
     }
-
-
-class Error(Exception):
-    pass
-
-
-class NoEDRPOUError(Error):
-    def __init__(self):
-        sys.stderr.write(
-            'Не вказано ані відправників (параметр -p/--payers),'
-            ' ані отримувачів (параметр -r/--receipts). Повинен бути вказаний'
-            ' хоч один з них.\n'
-            )
-
-
-class OnlyOneOutputFormatIsAllowedError(Error):
-    def __init__(self):
-        sys.stderr.write(
-            'Забагато вихідних форматів, має бути вказано лише один '
-            'формат для зберігання.\n'
-            )
-
-
-class Top100WithEDRPOUError(Error):
-    def __init__(self):
-        sys.stderr.write(
-            'Параметр --top100 не може використовуватися разом з кодами '
-            'ЄДРПОУ отримувачів коштів та платників, ігноруємо…\n'
-            )
-
-
-class CannotFetchStatFileError(Error):
-    def __init__(self):
-        sys.stderr.write(
-            'Не вдалося отримати файл статистики.\n'
-            )
-
-
-class OnlyLastLoadParameterIsAllowedError(Error):
-    def __init__(self):
-        sys.stderr.write(
-            'Параметр `lastload` не призначений для використання разом з '
-            'іншими параметрами.\n'
-            )
-
-
-class NoDataReturnError(Error):
-    def __init__(self):
-        sys.stderr.write('Системою Є-Data на запит не повернуто даних.\n')
-
-
-class EDataSystemError(Error):
-    def __init__(self, message):
-        self.message = "Помилка API порталу Є-Data:\n" \
-            "{}\n".format(message)
-
-
-class ValueIsNotADateError(Error):
-    def __init__(self, message):
-        self.message = message
-
-
-class DateOrderViolation(Error):
-    def __init__(self):
-        sys.stderr.write(
-            'Початкова дата більша за кінцеву, дати буде поміняно '
-            'місцями.\n'
-            )
-
-
-class DatesWithoutPayersError(Error):
-    def __init__(self):
-        sys.stderr.write(
-            'Початкова та/або кінцева дата зазначені без кодів платників '
-            'або отримувачів, параметри проігноровано.\n'
-            )
-
-
-class StatisticProcNeedsParameterError(Error):
-    def __init__(self):
-        sys.stderr.write(
-            'Ця процедура потребує наявності одного з параметрів `--doc` або '
-            '`--org`. Вкажіть потрібний і запустіть скрипт знову.\n'
-            )
-
-
-class WrongTreasuryInList(Error):
-    def __init__(self):
-        sys.stderr.write('Казначейства з даним кодом не існує.\n')
 
 
 arg_parser = argparse.ArgumentParser(
@@ -316,7 +241,7 @@ def fetch(qry_dict, output_format=None, ascii=False, indent=False,
             if r.status_code == 200:
                 try:
                     save_file(r.iter_content, zipname, verbose)
-                except Error:
+                except EdataError as e:
                     raise
                 else:
                     return 0
@@ -332,6 +257,7 @@ def fetch(qry_dict, output_format=None, ascii=False, indent=False,
         # raise
         sys.exit(1)
     except ConnectionError as e:
+        raise
         print("Помилка з'єднання: `{}`".format(e.args[0].args[0]))
         sys.exit(1)
     except NoDataReturnError:
@@ -339,8 +265,7 @@ def fetch(qry_dict, output_format=None, ascii=False, indent=False,
     except EDataSystemError as e:
         print(e.message)
         sys.exit(1)
-    except Error:
-        # print(r.text)
+    except Exception:
         raise
         # sys.exit(1)
     else:
@@ -359,7 +284,7 @@ def make_json(edata_json, ensure_ascii=False, indent=None, verbose=None):
     try:
         with open('edata.json', 'w', encoding='utf-8') as f:
             json.dump(edata_json, f, ensure_ascii=ensure_ascii, indent=indent)
-    except Error:
+    except Exception:
         raise
     else:
         if verbose:
@@ -567,7 +492,7 @@ def _stat_get_org(verbose=None):
             raise CannotFetchStatFileError
     except CannotFetchStatFileError:
         sys.exit(1)
-    except Error:
+    except Exception:
         raise
     else:
         save_file(r.iter_content, ZIPPED_STAT_NAME, verbose)
@@ -578,7 +503,7 @@ def _stat_get_doc(url, ascii=None, verbose=None):
         _download_arbitrary_json(url, ascii=ascii, verbose=verbose,
                                  json_filename='_stat_documents.json',
                                  )
-    except Error:
+    except Exception:
         raise
     else:
         sys.exit(0)
@@ -594,7 +519,7 @@ def cabinets(results):
     except CannotFetchStatFileError:
         sys.stderr.write("Не вдалося отримати файл статистики.\n")
         sys.exit(1)
-    except Error:
+    except Exception:
         raise
     else:
         if results.verbose:
@@ -614,7 +539,7 @@ def statistic(org, doc, ascii=None, verbose=None):
             _stat_get_org(verbose)
         elif doc:
             _stat_get_doc('/v2/stat/documents', ascii, verbose)
-    except Error:
+    except Exception:
         raise
     else:
         sys.exit(0)
@@ -629,7 +554,7 @@ def _download_arbitrary_json(url_part, ascii, json_filename, verbose):
                          )
         if r.status_code in (403, 403, 404):
             r.raise_for_status()
-    except Error:
+    except Exception:
         raise
     else:
         if r.status_code == 200:
@@ -646,7 +571,7 @@ def regions(ping_region=None, ascii=None, verbose=None):
         _download_arbitrary_json(
             '/v2/regions', ascii=ascii, json_filename='_regions.json',
             verbose=verbose)
-    except Error:
+    except Exception:
         raise
     else:
         sys.exit(0)
