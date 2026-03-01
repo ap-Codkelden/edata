@@ -7,6 +7,7 @@ import sys
 import argparse
 import time
 import os.path
+from pathlib import Path
 import tempfile
 from collections import namedtuple
 from calendar import monthrange
@@ -19,17 +20,15 @@ Namespace = namedtuple('Namespace', "csv,indent,json,keep_json,lastload,"
     "payers,ping,receipts,sqlite,startdate,enddate,subparser_name,top100,"
     "treasury,verbose,zipname,ascii")
 
-save_dir_name: str = "data"
 start_date = end_date = None
 
 try:
-    save_dir: Path = Path(tempfile.gettempdir()) / save_dir_name
-    save_dir.mkdir(parents=True, exist_ok=True)
+    save_dir_name: Path = Path("edata", "data")
+    Path(save_dir_name).mkdir(parents=True, exist_ok=True)
 except Exception as e:
-    save_dir = Path(save_dir_name)
-    Path(save_dir).mkdir(parents=True, exist_ok=True)
     print("Не вдається створити директорію для збереження даних у \n"
           "тимчасовій директорії. Створено у поточній.\n")
+    raise
 
 
 def daterange(start_date: date, end_date: date):
@@ -38,7 +37,12 @@ def daterange(start_date: date, end_date: date):
         yield d.weekday(), d.isoformat()
 
 
-def extract(start_date: date, end_date: date, verbose: Optional[bool]=None):
+def extract(start_date: date, end_date: date, verbose: Optional[bool]=None,
+            save_dir=None):
+    if save_dir is None:
+        save_dir = Path('data')
+        save_dir.mkdir(exist_ok=True)
+
     for single_date in daterange(start_date, end_date):
         weekday, tr_date = single_date
         if verbose:
@@ -50,7 +54,7 @@ def extract(start_date: date, end_date: date, verbose: Optional[bool]=None):
             indent=0, json=False, keep_json=False, lastload=False,
             payers=[], ping=False, receipts=[], sqlite=False,
             subparser_name='transactions', top100=False, treasury=[],
-            verbose=False, zipname=os.path.join("data", tr_date))
+            verbose=False, zipname=Path(save_dir / (tr_date + '.zip')))
         transactions(results)
         time.sleep(1.5)
 
@@ -82,4 +86,6 @@ if __name__ == "__main__":
         print(e.args[0], "Невірний формат дати, має бути ISO 8601")
         sys.exit(1)
     else:
-        extract(start_date, end_date, verbose=args.verbose)
+        extract(start_date, end_date, verbose=args.verbose,
+                save_dir=save_dir_name)
+

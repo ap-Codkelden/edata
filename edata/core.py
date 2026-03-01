@@ -146,9 +146,9 @@ def show_db_stats(processed_records, present_records):
     verbose_msg = "Кількість оброблених записів: {:>10}\n" \
         .format(processed_records)
     sys.stdout.write(verbose_msg)
-    sys.stdout.write("Кількість доданих записів:" +
-                     ' ' * 4 + "{:>10}\n"
-                     .format(processed_records - present_records))
+    sys.stdout.write(
+        "Кількість доданих записів:" + ' ' * 4 + "{:>10}\n".format(
+            processed_records - present_records))
     return
 
 
@@ -165,10 +165,7 @@ def _date_generator(edata_transactions):
 
 
 def save_file(binary_iter_content, file_name, verbose=None):
-    if re.match(r'^.+?\.zip$', file_name):
-        # re.sub(pattern, repl, string, count=0, flags=0)
-        file_name = re.sub('zip$', '', file_name)
-    with open(file_name+'.zip', 'wb') as f:
+    with open(file_name, 'wb') as f:
         for chunk in binary_iter_content(chunk_size=1024):
             if chunk:
                 f.write(chunk)
@@ -582,7 +579,7 @@ if __name__ == '__main__':
         arg_parser.print_help()
         sys.exit(2)
     results = arg_parser.parse_args()
-    # print(results)
+    print(results)
     command = results.subparser_name
     if command == 'transactions':
         transactions(results)
