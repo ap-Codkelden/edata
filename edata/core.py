@@ -23,8 +23,8 @@ import re
 from datetime import datetime
 from requests.exceptions import ConnectionError
 from urllib3.exceptions import ProtocolError
-from regions import REGIONS
-from errors import (
+from .regions import REGIONS
+from .errors import (
     EdataError,
     NoDataReturnError,
     NoEDRPOUError,

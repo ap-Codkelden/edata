@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 
-from edata import transactions
+from .core import transactions
 import sys
 import argparse
 import time
