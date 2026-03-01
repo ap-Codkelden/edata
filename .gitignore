@@ -8,3 +8,5 @@ lib/*
 *.xlsx
 *.txt
 __pycache__/*
+edata/data/*
+
