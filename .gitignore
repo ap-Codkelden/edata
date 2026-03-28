@@ -9,4 +9,4 @@ lib/*
 *.txt
 __pycache__/*
 edata/data/*
-
+edata/__pycache__/*
