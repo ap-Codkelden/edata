@@ -59,10 +59,25 @@ def extract(start_date: date, end_date: date, verbose: Optional[bool]=None,
         time.sleep(1.5)
 
 
-def last_day_date(d: date):
+def last_day_of_month(d: date):
+    """
+    Return the last calendar day of the month for the given date.
+
+    Args:
+        d: Any date within the target month.
+
+    Returns:
+        A ``date`` object representing the final day of ``d``'s month.
+
+    Example:
+        >>> last_day_of_month(date(2026, 2, 10))
+        date(2026, 2, 28)
+
+        >>> last_day_of_month(date(2024, 2, 10))
+        date(2024, 2, 29)
+    """
     y, m = d.year, d.month
-    last_day = monthrange(y, m)[1]
-    return date(y, m, last_day) + timedelta(days=1)
+    return date(y, m, monthrange(y, m)[1])
 
 
 if __name__ == "__main__":
@@ -79,7 +94,7 @@ if __name__ == "__main__":
     try:
         start_date= datetime.strptime(args.start_date, r"%Y-%m-%d").date()
         if args.ed is None:
-            end_date = last_day_date(start_date) 
+            end_date = last_day_of_month(start_date) 
         else:
             end_date = datetime.strptime(args.ed, r"%Y-%m-%d").date()
     except ValueError as e:
